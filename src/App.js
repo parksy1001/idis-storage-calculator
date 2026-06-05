@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {OEM_CONFIG} from "./config/OEM";
 import {calcDvrMbps} from "./calc/calcDvrMbps";
 import {
@@ -52,7 +52,7 @@ const getFpsOptions = (recorderType, recorderModel) => {
 
 const FPS_SCALE = { 1:10, 2:14, 3:17, 4:20, 5:22, 10:32, 15:39, 30:55, 60:60 };
   const getGroupLabel = (group, index) => {
-  return group.title?.trim() || `Group ${index + 1}`;
+  return group.title?.trim() || "";
 };
 
 const OEM_KEY =
@@ -74,7 +74,7 @@ const SummaryRow = ({ label, icon, color, cfg, mbps, recorderType }) => (
       <span>{label}</span>
     </div>
     <div className="col-span-2 text-center">{cfg.codec}</div>
-    <div className="col-span-3">{recorderType === "DVR" ? cfg.outRes : typeof cfg.res === "object" ? cfg.res.label : cfg.res}</div>
+    <div className="col-span-3">{cfg.outResLabel ?? cfg.outRes ?? cfg.res?.label ?? cfg.res ?? "-"}</div>
     <div className="col-span-1 text-center">{cfg.fps}</div>
     <div className="col-span-2 text-center">{cfg.qual}</div>
     <div className="col-span-1 text-center">{cfg.hours}H</div>
@@ -134,11 +134,11 @@ const calcGroupMbps = (cfg, recorderType) => {
       (typeof cfg.res === "object" ? cfg.res.value : undefined);
 
       cfg.outRes = outRes; 
-
+      
       return calcDvrMbps({
-        camType: cfg.type, // 기존 cfg.type 그대로 전달 (dvrMaps에서 처리)
+        camResIdx: DVR_CAM_RES_INDEX[cfg.type],
         outRes,
-        qual: cfg.qual,
+        quality: cfg.qual,
         fps: cfg.fps,
         codec: cfg.codec,
         useIC: cfg.useIC
@@ -156,14 +156,15 @@ const calcGroupMbps = (cfg, recorderType) => {
 };
 
 const calcBandwidthMbps = ({ res, fps, qual, codec, useIC }) => {
-  const baseList = BITRATE_TABLE[res];
+  const resKey = res?.value;
+  const baseList = BITRATE_TABLE[resKey];
   if (!baseList) return 0;
 
   const qIdx = QUALITY_INDEX[qual];
   const baseKbps = baseList[qIdx];
 
   const scale = FPS_SCALE[fps] ?? FPS_SCALE[30];
-  const bias = RES_BIAS[res] ?? 0;
+  const bias = RES_BIAS[resKey] ?? 0;
 
   let kbps = baseKbps * (scale + bias) / (FPS_SCALE[30] + bias);
 
@@ -195,25 +196,147 @@ const calcGroupPeakMbps = (group, recorderType) => {
 const NVR_MODELS = OEM.NVR_MODELS;
   
 const CAMERA_TYPES = {
-  NVR : {
-  "2MP": ["1920x1080", "1280x720","640x360", "352x240"],
-  "4MP": ["2592x1456", "1920x1080", "1280x720", "640x360"],
-  "5MP": ["2592x1944", "1920x1440", "1280x960", "640x480",],
-  "6MP": ["3328x1872", "1920x1080", "1280x720", "640x360"],
-  "8MP": ["3840x2160", "1920x1080", "1280x720", "640x360"],
-  "5MP Fisheye_In": ["2560x2048","640x512"],
-  "5MP Fisheye_Out": ["2560x2048","2560x1024","1920x1536","1280x1024","640x512","640x256"],
-  "12MP Fisheye": ["2944x2944","2944x1472","2208x2208","1472x1472","768x768","736x736","768x384"],
-  },
+  NVR: {
+    "2MP (IP Camera)": [
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+    { label: "352x240", value: "352x240" },
+  ],
+  "4MP (IP Camera)": [
+    { label: "2592x1456", value: "2592x1456" },
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+  ],
+  "5MP (IP Camera)": [
+    { label: "2592x1944", value: "2592x1944" },
+    { label: "1920x1440", value: "1920x1440" },
+    { label: "1280x960", value: "1280x960" },
+    { label: "640x480", value: "640x480" },
+  ],
+  "6MP (IP Camera)": [
+    { label: "3328x1872", value: "3328x1872" },
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+  ],
+  "8MP (IP Camera)": [
+    { label: "3840x2160", value: "3840x2160" },
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+  ],
+  "5MP Fisheye_In (IP Camera)": [
+    { label: "2560x2048", value: "2560x2048" },
+    { label: "640x512", value: "640x512" },
+  ],
+  "5MP Fisheye_Out (IP Camera)": [
+    { label: "2560x2048", value: "2560x2048" },
+    { label: "2560x1024", value: "2560x1024" },
+    { label: "1920x1536", value: "1920x1536" },
+    { label: "1280x1024", value: "1280x1024" },
+    { label: "640x512", value: "640x512" },
+    { label: "640x256", value: "640x256" },
+  ],
+  "12MP Fisheye (IP Camera)": [
+    { label: "2944x2944", value: "2944x2944" },
+    { label: "2944x1472", value: "2944x1472" },
+    { label: "2208x2208", value: "2208x2208" },
+    { label: "1472x1472", value: "1472x1472" },
+    { label: "768x768", value: "768x768" },
+    { label: "736x736", value: "736x736" },
+    { label: "768x384", value: "768x384" },
+  ],
+},
   DVR : {
-  "D1": [{label:"Very High(720x480)", value : "Very High"},  {label : "High(720x240)", value : "High"}, {label : "Standard(360x240)", value : "Standard"}],
-  "960H": [{label:"Very High(960x480)", value : "Very High"},  {label : "High(960x240)", value : "High"}, {label : "Standard(480x240)", value : "Standard"}],
-  "1MP": [{label:"Very High(1280x720)", value : "Very High"},  {label : "High(720x480)", value : "High"}, {label : "Standard(360x240)", value : "Standard"}],
-  "2MP": [{label:"Very High(1920x1080)", value : "Very High"},  {label : "High(1280x720)", value : "High"}, {label : "Standard(640x360)", value : "Standard"}],
-  "3MP": [{label:"Very High(1920x1536)", value : "Very High"},  {label : "High(1280x720)", value : "High"}, {label : "Standard(720x480)", value : "Standard"}],
-  "4MP": [{label:"Very High(2560x1440)", value : "Very High"},  {label : "High(1280x720)", value : "High"}, {label : "Standard(640x360)", value : "Standard"}],
-  "5MP": [{label:"Very High(2560x1920)", value : "Very High"},  {label : "High(1280x720)", value : "High"}, {label : "Standard(640x360)", value : "Standard"}],
-  },
+  "D1 (Analog Camera)": [
+    {label:"Very High(720x480)",value : "Very High"},
+    {label : "High(720x240)", value : "High"},
+    {label : "Standard(360x240)", value : "Standard"}
+  ],
+  "960H (Analog Camera)": [
+    {label:"Very High(960x480)", value : "Very High"},
+    {label : "High(960x240)", value : "High"},
+    {label : "Standard(480x240)", value : "Standard"}
+  ],
+  "1MP (Analog Camera)": [
+    {label:"Very High(1280x720)", value : "Very High"},
+    {label : "High(720x480)", value : "High"},
+    {label : "Standard(360x240)", value : "Standard"}
+  ],
+  "2MP (Analog Camera)": [
+    {label:"Very High(1920x1080)", value : "Very High"},
+    {label : "High(1280x720)", value : "High"},
+    {label : "Standard(640x360)", value : "Standard"}
+  ],
+  "3MP (Analog Camera)": [
+    {label:"Very High(1920x1536)", value : "Very High"},
+    {label : "High(1280x720)", value : "High"},
+    {label : "Standard(720x480)", value : "Standard"}
+  ],
+  "4MP (Analog Camera)": [
+    {label:"Very High(2560x1440)", value : "Very High"},
+    {label : "High(1280x720)", value : "High"},
+    {label : "Standard(640x360)", value : "Standard"}
+  ],
+  "5MP (Analog Camera)": [
+    {label:"Very High(2560x1920)", value : "Very High"},
+    {label : "High(1280x720)", value : "High"},
+    {label : "Standard(640x360)", value : "Standard"}
+  ],
+  "2MP (IP Camera)": [
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+    { label: "352x240", value: "352x240" },
+  ],
+  "4MP (IP Camera)": [
+    { label: "2592x1456", value: "2592x1456" },
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+  ],
+  "5MP (IP Camera)": [
+    { label: "2592x1944", value: "2592x1944" },
+    { label: "1920x1440", value: "1920x1440" },
+    { label: "1280x960", value: "1280x960" },
+    { label: "640x480", value: "640x480" },
+  ],
+  "6MP (IP Camera)": [
+    { label: "3328x1872", value: "3328x1872" },
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+  ],
+  "8MP (IP Camera)": [
+    { label: "3840x2160", value: "3840x2160" },
+    { label: "1920x1080", value: "1920x1080" },
+    { label: "1280x720", value: "1280x720" },
+    { label: "640x360", value: "640x360" },
+  ],
+  "5MP Fisheye_In (IP Camera)": [
+    { label: "2560x2048", value: "2560x2048" },
+    { label: "640x512", value: "640x512" },
+  ],
+  "5MP Fisheye_Out (IP Camera)": [
+    { label: "2560x2048", value: "2560x2048" },
+    { label: "2560x1024", value: "2560x1024" },
+    { label: "1920x1536", value: "1920x1536" },
+    { label: "1280x1024", value: "1280x1024" },
+    { label: "640x512", value: "640x512" },
+    { label: "640x256", value: "640x256" },
+  ],
+  "12MP Fisheye (IP Camera)": [
+    { label: "2944x2944", value: "2944x2944" },
+    { label: "2944x1472", value: "2944x1472" },
+    { label: "2208x2208", value: "2208x2208" },
+    { label: "1472x1472", value: "1472x1472" },
+    { label: "768x768", value: "768x768" },
+    { label: "736x736", value: "736x736" },
+    { label: "768x384", value: "768x384" },
+  ],
+},
 };
 
 const RAID_INFO = {
@@ -224,20 +347,20 @@ const RAID_INFO = {
   "RAID10": "Combines mirroring and striping to provide high performance and fault tolerance. (50% usable capacity, minimum 4 disks required)"
 };
 
-const cameraTypeOptions = useMemo(() => {
+// const cameraTypeOptions = useMemo(() => {
 
-  if (!selectedRecorder) return [];
+//   if (!selectedRecorder) return [];
 
-  if (selectedRecorder.isHybrid) {
-    return [
-      ...Object.keys(CAMERA_TYPES.NVR),
-      ...Object.keys(CAMERA_TYPES.DVR)
-    ];
-  }
+//   if (selectedRecorder.isHybrid) {
+//     return [
+//       ...Object.keys(CAMERA_TYPES.NVR),
+//       ...Object.keys(CAMERA_TYPES.DVR)
+//     ];
+//   }
 
-  return Object.keys(CAMERA_TYPES[recorderType] || {});
+//   return Object.keys(CAMERA_TYPES[recorderType] || {});
 
-}, [recorderType, selectedRecorder]);
+// }, [recorderType, selectedRecorder]);
 
 const QUALITY_MULTIPLIER = { "Very High": 1.2, "High": 1.0, "Standard": 0.8, "Basic": 0.5 };
 
@@ -294,12 +417,37 @@ const currentInputMode = isHybridModel ? hybridInputType : recorderType;
 const [camType, setCamType] = useState("");
 const [camQty, setCamQty] = useState(1);
 
-const calcMbps = (cfg, ic) =>
-      calcGroupMbps({
+const getCalcMode = (cameraType) => {
+  const isIpCamera = cameraType?.includes("(IP Camera)");
+  const isAnalogCamera = cameraType?.includes("(Analog Camera)");
+
+  if (recorderType === "NVR") {
+    return isIpCamera ? "NVR" : null;
+  }
+
+  if (recorderType === "DVR") {
+    if (selectedRecorder?.isHybrid) {
+      if (isIpCamera) return "NVR";
+      if (isAnalogCamera) return "DVR";
+      return null;
+    }
+
+    return isAnalogCamera ? "DVR" : null;
+  }
+
+  return null;
+};
+
+const calcMbps = (cfg, ic) => {
+  const calcMode = getCalcMode(camType);
+  if (!calcMode) return 0;
+
+  return calcGroupMbps({
     ...cfg,
-    type: camType, 
-    useIC:ic
-  },recorderType);
+    type: camType,
+    useIC: ic
+  }, calcMode);
+};
 
   useEffect(() => {
   const options = getFpsOptions(recorderType, selectedRecorder);
@@ -312,6 +460,13 @@ const calcMbps = (cfg, ic) =>
     setEventConfig(prev => ({ ...prev, fps: maxAllowed }));
   }
 }, [recorderType, selectedRecorder]);
+
+const getResolutionText = (cfg) => {
+  if (cfg.outResLabel) return cfg.outResLabel;
+  if (cfg.res?.label) return cfg.res.label;
+  if (cfg.outRes) return cfg.outRes;
+  return "-";
+};
 
 
 const exportToPDF = () => {
@@ -382,18 +537,10 @@ const exportToPDF = () => {
   let grandDaily = 0;
 
   cameras.forEach((c, idx) => {
-    const tMbps = calcGroupMbps({
-  ...c.time,
-  type : c.type,
-  useIC: c.useIC
-},recorderType);
-const eMbps = calcGroupMbps({
-  ...c.event,
-  type : c.type,
-  useIC: c.useIC
-},recorderType);
-
-
+    const calcMode = getCalcMode(c.type);
+    
+    const tMbps = calcMode? calcGroupMbps({ ...c.time, type: c.type, useIC: c.useIC }, calcMode) : 0;
+    const eMbps = calcMode? calcGroupMbps({ ...c.event, type: c.type, useIC: c.useIC }, calcMode) : 0;
     const tDaily = (tMbps * 3600 * c.time.hours * c.qty) / 8 / 1024;
     const eDaily = (eMbps * 3600 * c.event.hours * c.qty) / 8 / 1024;
 
@@ -404,7 +551,7 @@ const eMbps = calcGroupMbps({
       c.sceneLabel,
       "Time",
       c.time.codec,
-      c.time.res.label,
+      getResolutionText(c.time),
       c.time.fps,
       c.time.qual,
       c.time.hours,
@@ -419,7 +566,7 @@ const eMbps = calcGroupMbps({
       c.sceneLabel,
       "Event",
       c.event.codec,
-      c.event.res.label,
+      getResolutionText(c.event),
       c.event.fps,
       c.event.qual,
       c.event.hours,
@@ -542,16 +689,23 @@ const exportToExcel = () => {
 
 
   cameras.forEach((c, idx) => {
-const tMbps = calcGroupMbps({
-  ...c.time,
-  type : c.type,
-  useIC: c.useIC
-},recorderType);
-const eMbps = calcGroupMbps({
-  ...c.event,
-  type : c.type,
-  useIC: c.useIC
-},recorderType);
+const calcMode = getCalcMode(c.type);
+
+const tMbps = calcMode
+  ? calcGroupMbps({
+      ...c.time,
+      type: c.type,
+      useIC: c.useIC
+    }, calcMode)
+  : 0;
+
+const eMbps = calcMode
+  ? calcGroupMbps({
+      ...c.event,
+      type: c.type,
+      useIC: c.useIC
+    }, calcMode)
+  : 0;
 
 
     const tDaily = (tMbps * 3600 * c.time.hours * c.qty) / 8 / 1024;
@@ -564,7 +718,7 @@ const eMbps = calcGroupMbps({
       c.sceneLabel,
       "Time",
       c.time.codec,
-      c.time.res.label,
+      getResolutionText(c.time),
       c.time.fps,
       c.time.qual,
       c.time.hours,
@@ -579,7 +733,7 @@ const eMbps = calcGroupMbps({
       c.sceneLabel,
       "Event",
       c.event.codec,
-      c.event.res.label,
+      getResolutionText(c.event),
       c.event.fps,
       c.event.qual,
       c.event.hours,
@@ -701,10 +855,14 @@ setEventConfig(prev => {
   const [hddQty, setHddQty] = useState(1);
   const [targetDays, setTargetDays] = useState(30);
   const [cameras, setCameras] = useState([]);
-  const [groupTitle, setGroupTitle] = useState("Group");
+  const [groupTitle, setGroupTitle] = useState("Group 1");
+  const [nextGroupNumber, setNextGroupNumber] = useState(2);
+  const deployedGroupsRef = useRef(null);
+  const shouldScrollToBottomRef = useRef(false);
   
   // Camera Group Settings (Add/Edit)
   const [editingId, setEditingId] = useState(null);
+  const [formBackup, setFormBackup] = useState(null);
   
 const normalizeRes = (r) =>
   typeof r === "string" ? { label: r, value: r } : r;
@@ -769,19 +927,8 @@ const [eventConfig, setEventConfig] = useState({
 
 useEffect(() => {
   const types = Object.keys(CAMERA_TYPES[recorderType] || {});
-
-  if (recorderType === "DVR") {
-    // DVR 기본값: 2MP
-    if (types.includes("2MP")) {
-      setCamType("2MP");
-    } else {
-      setCamType(types[0] || "");
-    }
-  } else {
-    // NVR: 기존 로직 유지
-    setCamType(types[0] || "");
-  }
-}, [recorderType]);
+  setCamType(types[0] || "");
+}, [selectedRecorder]);
 
 
 
@@ -792,17 +939,9 @@ const totals = useMemo(() => {
 
   cameras.forEach(c => {
     totalCh += c.qty;
-
-    const tMbps = calcGroupMbps({
-      ...c.time,
-      type : c.type,
-      useIC: c.useIC
-    },recorderType);
-    const eMbps = calcGroupMbps({
-      ...c.event,
-      type : c.type,
-      useIC: c.useIC
-    },recorderType);
+    const calcMode = getCalcMode(c.type);
+    const tMbps = calcMode? calcGroupMbps({ ...c.time, type: c.type, useIC: c.useIC}, calcMode) : 0;
+    const eMbps = calcMode ? calcGroupMbps({ ...c.event, type: c.type, useIC: c.useIC }, calcMode): 0;
 
     const timeDaily =
       (tMbps * 3600 * c.time.hours * c.qty) / 8 / 1024;
@@ -834,7 +973,7 @@ const totals = useMemo(() => {
     usableTB,
     estimatedDays
   };
-}, [cameras, hddSize, hddQty, raidOption]);
+}, [cameras, hddSize, hddQty, raidOption, recorderType, selectedRecorder]);
 
 
   const handleNvrChange = (e) => {
@@ -843,6 +982,9 @@ const totals = useMemo(() => {
       setSelectedRecorder(model);
       setRaidOption("None");
       setHddQty(1);
+      setCameras([]);
+      setEditingId(null);
+      setActiveSceneId("");
     }
   };
 
@@ -882,23 +1024,43 @@ const handleAddOrUpdateCamera = () => {
     ? totals.totalCh - cameras.find(c => c.id === editingId).qty + camQty
     : totals.totalCh + camQty;
   
-    if (capacityLimit > selectedRecorder.ch) {
+  if (capacityLimit > selectedRecorder.ch) {
     alert("Cannot add cameras because the NVR channel limit has been exceeded.");
     return;
   }
+  
   const defaultGroupName = `Group ${cameras.length + 1}`;
+
+  if (!groupTitle.trim()) {
+    alert("Please enter a group title.");
+    return;
+  }
+
+  const normalizedGroupTitle = groupTitle.trim().toLowerCase();
+
+  const isDuplicateGroupTitle = cameras.some(c =>
+    c.id !== editingId &&
+    c.title?.trim().toLowerCase() === normalizedGroupTitle
+  );
+
+  if (isDuplicateGroupTitle) {
+    alert("Group title already exists. Please enter a different group title.");
+    return;
+  }
   // ② 추가될 카메라 그룹 구성
   const newGroup = {
     id: editingId || Math.random().toString(36).substr(2, 9),
-    title: groupTitle?.trim() || `Group ${cameras.length + 1}`,
+    title: groupTitle.trim(),
     type: camType,
+    mode: getCalcMode(camType),
     qty: camQty,
     sceneId : activeSceneId,
     useIC,
     sceneLabel: PRESET_SCENES.find(s => s.id === activeSceneId)?.name || "User",
-    time: recorderType === "DVR"
+    time: getCalcMode(camType) === "DVR"
   ? {
-      outRes: timeConfig.res.value,
+      outRes: timeConfig.res?.value ?? timeConfig.outRes,
+      outResLabel: timeConfig.res?.label ?? timeConfig.outRes,
       fps: timeConfig.fps,
       qual: timeConfig.qual,
       codec: timeConfig.codec,
@@ -912,9 +1074,10 @@ const handleAddOrUpdateCamera = () => {
       hours: timeConfig.hours
     },
 
-    event: recorderType === "DVR"
+    event: getCalcMode(camType) === "DVR"
   ? {
-      outRes: eventConfig.res.value,
+      outRes: eventConfig.res?.value ?? eventConfig.outRes,
+      outResLabel: eventConfig.res?.label ?? eventConfig.outRes,
       fps: eventConfig.fps,
       qual: eventConfig.qual,
       codec: eventConfig.codec,
@@ -925,7 +1088,7 @@ const handleAddOrUpdateCamera = () => {
       fps: eventConfig.fps,
       qual: eventConfig.qual,
       codec: eventConfig.codec,
-      hours: timeConfig.hours
+      hours: eventConfig.hours
     }
   };
 
@@ -956,14 +1119,32 @@ const handleAddOrUpdateCamera = () => {
     setCameras(cameras.map(c => c.id === editingId ? newGroup : c));
     setEditingId(null);
   } else {
+    shouldScrollToBottomRef.current = true;
     setCameras([...cameras, newGroup]);
+    setGroupTitle(`Group ${nextGroupNumber}`);
+    setNextGroupNumber(prev => prev + 1);
   }
 
   resetInputForm();
 };
 
+  useEffect(() => {
+    if (shouldScrollToBottomRef.current && deployedGroupsRef.current) {
+      deployedGroupsRef.current.scrollTop = deployedGroupsRef.current.scrollHeight;
+      shouldScrollToBottomRef.current = false;
+    }
+  }, [cameras]);
 
   const handleEdit = (camera) => {
+    setFormBackup({
+      groupTitle,
+      camType,
+      camQty,
+      timeConfig,
+      eventConfig,
+      useIC,
+      activeSceneId,
+    });
     setEditingId(camera.id);
     setGroupTitle(camera.title || "");
     setCamType(camera.type);
@@ -975,11 +1156,20 @@ const handleAddOrUpdateCamera = () => {
   };
 
   const resetInputForm = () => {
+    if (formBackup) {
+      setGroupTitle(formBackup.groupTitle);
+      setCamType(formBackup.camType);
+      setCamQty(formBackup.camQty);
+      setTimeConfig(formBackup.timeConfig);
+      setEventConfig(formBackup.eventConfig);
+      setUseIC(formBackup.useIC);
+      setActiveSceneId(formBackup.activeSceneId);
+    } else{
+      setGroupTitle(`Group ${nextGroupNumber}`);
+    }
     setEditingId(null);
-    setCamQty(1);
-    setUseIC(false); // ✅ 추가
-    setActiveSceneId("");
-    setGroupTitle(`Group ${cameras.length + 1}`);
+    setFormBackup(null);
+  
   };
 
   const handleClearAll = () => {
@@ -1001,6 +1191,7 @@ const handleAddOrUpdateCamera = () => {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-20 font-sans text-slate-900">
+      {/* {editingId && (<div className="fixed inset-0 bg-slate-900/40 z-[55]" />)} */}
       {/* Sticky Header */}
       <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-2 flex items-center justify-between gap-4">
@@ -1086,7 +1277,12 @@ const handleAddOrUpdateCamera = () => {
     {["NVR", "DVR"].map(type => (
       <button
         key={type}
-        onClick={() => setRecorderType(type)}
+        onClick={() => {
+          setRecorderType(type)
+          setCameras([]);
+          setEditingId(null);
+          setActiveSceneId("");
+        }}
         className={`
           py-2 rounded-lg text-xs font-black tracking-widest
           transition-all border
@@ -1234,7 +1430,14 @@ const handleAddOrUpdateCamera = () => {
 
         {/* Right: Camera Management */}
         <div className="lg:col-span-9 space-y-6">
-          <section className={`bg-white rounded-2xl p-6 shadow-sm border transition-all duration-300 ${editingId ? 'border-blue-400 ring-2 ring-blue-500/10' : 'border-slate-200'}`}>
+        {/*
+          <section
+            className={`bg-white rounded-2xl p-6 shadow-sm border transition-all duration-300 relative ${
+              editingId? 'z-[60] border-blue-400 ring-2 ring-blue-500/10': 'border-slate-200'
+              }`}
+          >
+          */}
+        <section className={`bg-white rounded-2xl p-6 shadow-sm border transition-all duration-300 ${editingId ? 'border-blue-400 ring-2 ring-blue-500/10' : 'border-slate-200'}`}>
             <div className="flex items-center justify-between mb-2">
 <div className="flex items-center gap-3">
   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
@@ -1254,7 +1457,7 @@ const handleAddOrUpdateCamera = () => {
     </span>
     <input
       type="text"
-      placeholder="e.g. Lobby"
+      placeholder="Enter group title"
       value={groupTitle}
       onChange={e => setGroupTitle(e.target.value)}
       className="
@@ -1294,11 +1497,17 @@ const handleAddOrUpdateCamera = () => {
               <div className="ml-4 flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-2 px-3 py-1.5">
                   <span className="text-[9px] font-black text-slate-400 uppercase">Camera</span>
-                      <select className="bg-transparent text-xs font-bold outline-none" value={camType} onChange={e => { setCamType(e.target.value); setActiveSceneId(""); }}>
-                    {Object.keys(CAMERA_TYPES[recorderType] || {}).map(type => (
-    <option key={type} value={type}>
-      {type}
-    </option>))}
+                  <select className="bg-transparent text-xs font-bold outline-none w-[100px] truncate" value={camType} onChange={e => { setCamType(e.target.value); setActiveSceneId(""); }}>
+                    {Object.keys(CAMERA_TYPES[recorderType] || {}).filter(type => {
+                      if (recorderType === "DVR" && !selectedRecorder?.isHybrid) {
+                        return !type.includes("(IP Camera)");
+                      }
+                      return true;
+                    }).map(type => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                    ))}
                   </select>
                 </div>
                 <div className="w-px h-4 bg-slate-200"></div>
@@ -1345,13 +1554,12 @@ const handleAddOrUpdateCamera = () => {
                   </select>
                 </div>
                 <div className="col-span-3 px-2">
-                  <select className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center" value={timeConfig.res?.value} onChange={e => { const selected = CAMERA_TYPES[recorderType][camType].map(normalizeRes).find(r => r.value === e.target.value);
+                  <select className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center" value={timeConfig.res?.value} onChange={e => { const selected = CAMERA_TYPES[recorderType][camType].find(r => r.value === e.target.value);
                    setTimeConfig({ ...timeConfig, res: selected });
   }}
 >
   {CAMERA_TYPES[recorderType]?.[camType]
-    ?.map(normalizeRes)
-    .map(r => (
+    ?.map(r => (
       <option key={r.value} value={r.value}>
         {r.label}
       </option>
@@ -1422,13 +1630,12 @@ const handleAddOrUpdateCamera = () => {
                   </select>
                 </div>
                 <div className="col-span-3 px-2">
-                  <select className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center" value={eventConfig.res?.value} onChange={e => { const selected = CAMERA_TYPES[recorderType][camType].map(normalizeRes).find(r => r.value === e.target.value);
+                  <select className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center" value={eventConfig.res?.value} onChange={e => { const selected = CAMERA_TYPES[recorderType][camType].find(r => r.value === e.target.value);
     setEventConfig({ ...eventConfig, res: selected });
   }}
 >
   {CAMERA_TYPES[recorderType]?.[camType]
-    ?.map(normalizeRes)
-    .map(r => (
+    ?.map(r => (
       <option key={r.value} value={r.value}>
         {r.label}
       </option>
@@ -1526,24 +1733,41 @@ const handleAddOrUpdateCamera = () => {
   </div>
 </div>
 
-              <div className="divide-y divide-slate-50 max-h-[400px] overflow-y-auto">
+              <div
+                ref={deployedGroupsRef}
+                className={`divide-y divide-slate-50 max-h-[400px] ${
+                  editingId ? "overflow-hidden" : "overflow-y-auto"
+                }`}
+              >
                  {cameras.map(c => {
-                   const tMbps = calcGroupMbps({
-  ...c.time,
-  type : c.type,
-  useIC: c.useIC
-},recorderType);
-const eMbps = calcGroupMbps({
-  ...c.event,
-  type : c.type,
-  useIC: c.useIC
-},recorderType);
+                    const calcMode = getCalcMode(c.type);
+                    const tMbps = calcMode
+                    ? calcGroupMbps({
+                      ...c.time,
+                      type: c.type,
+                      useIC: c.useIC
+                    }, calcMode)
+                      : 0;
 
-                   const dailyGB = (((tMbps * 3600 * c.time.hours) + (eMbps * 3600 * c.event.hours)) * c.qty) / 8 / 1024;
+                    const eMbps = calcMode
+                      ? calcGroupMbps({
+                          ...c.event,
+                          type: c.type,
+                          useIC: c.useIC
+                        }, calcMode)
+                      : 0;
+
+const dailyGB = (((tMbps * 3600 * c.time.hours) + (eMbps * 3600 * c.event.hours)) * c.qty) / 8 / 1024;
                    const isEditing = editingId === c.id;
 
                    return (
-                     <div key={c.id} className={`px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors ${isEditing ? 'bg-blue-50/50' : ''}`}>
+                     <div
+                        key={c.id}
+                        className={`px-6 py-4 flex items-center justify-between transition-colors ${
+                          editingId ? '' : 'hover:bg-slate-50'} ${
+                            isEditing ? 'bg-blue-100 shadow-[-4px_0_0_0_#3b82f6_inset]' : ''
+                            }`}
+                      >
                        <div className="flex items-center gap-4">
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${isEditing ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
                             <Layers size={18} />
@@ -1608,20 +1832,30 @@ const eMbps = calcGroupMbps({
                              <p className="text-[8px] font-bold text-slate-300 uppercase">Per Day</p>
                           </div>
                           
-                          <button 
-                            onClick={() => handleEdit(c)} 
-                            className={`p-1.5 rounded-md transition-all ${isEditing ? 'text-blue-600 bg-blue-100' : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50'}`}
+                          <button
+                            onClick={() => handleEdit(c)}
+                            disabled={!!editingId}
+                            className={`p-1.5 rounded-md transition-all ${
+                              editingId
+                              ? 'text-slate-200 cursor-not-allowed'
+                              : 'text-slate-300 hover:text-blue-500 hover:bg-blue-50'
+                            }`}
                             title="Edit"
                           >
-                             <Edit2 size={14} />
+                            <Edit2 size={14} />
                           </button>
-                          
-                          <button 
-                            onClick={() => setCameras(cameras.filter(item => item.id !== c.id))} 
-                            className="p-1.5 rounded-md text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-all"
+
+                          <button
+                            onClick={() => setCameras(cameras.filter(item => item.id !== c.id))}
+                            disabled={!!editingId}
+                            className={`p-1.5 rounded-md transition-all ${
+                              editingId
+                              ? 'text-slate-200 cursor-not-allowed'
+                              : 'text-slate-300 hover:text-rose-500 hover:bg-rose-50'
+                            }`}
                             title="Delete"
                           >
-                             <Trash2 size={14} />
+                            <Trash2 size={14} />
                           </button>
                        </div>
                      </div>

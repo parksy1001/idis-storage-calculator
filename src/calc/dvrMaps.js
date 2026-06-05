@@ -1,13 +1,13 @@
 
 export const DVR_CAM_RES_INDEX = {
   
-  "D1":0,
-  "960H":1,
-  "1MP": 2,   // D1
-  "2MP": 3,   // HD
-  "3MP": 4,   // 960H
-  "4MP": 5,   // FullHD
-  "5MP": 6    // 3M18 (IDIS 기준)
+  "D1 (Analog Camera)":0,
+  "960H (Analog Camera)":1,
+  "1MP (Analog Camera)": 2,   // D1
+  "2MP (Analog Camera)": 3,   // HD
+  "3MP (Analog Camera)": 4,   // 960H
+  "4MP (Analog Camera)": 5,   // FullHD
+  "5MP (Analog Camera)": 6    // 3M18 (IDIS 기준)
 };
 
 export const DVR_OUT_RES_INDEX = {
