@@ -34,8 +34,8 @@ import {
 } from 'lucide-react';
 const QUALITY_INDEX = { "Basic": 0, "Standard": 1, "High": 2, "Very High": 3 };
 
-const isAnalogType = (type) => !!CAMERA_TYPES.DVR[type];
-const isIpType = (type) => !!CAMERA_TYPES.NVR[type];
+const isAnalogType = (type) => type?.includes("(Analog Camera)");
+const isIpType = (type) => type?.includes("(IP Camera)");
 const HDD_SIZE_OPTIONS = [  2, 4, 6, 8, 10, 12, 14, 18]; // TB
 
 const FPS_POOL = {
@@ -189,7 +189,15 @@ const calcGroupPeakMbps = (group, recorderType) => {
     type : group.type,
     useIC: group.useIC
   }, recorderType);
-  return Math.max(t, e) * group.qty;
+  const d = group.useDualTrackRecording
+  ? calcGroupMbps({
+      ...group.dual,
+      type: group.type,
+      useIC: group.useIC
+    }, recorderType)
+  : 0;
+
+  return Math.max(t, e, d) * group.qty;
 };
 
 
@@ -339,6 +347,69 @@ const CAMERA_TYPES = {
 },
 };
 
+const DUAL_ALLOWED_RESOLUTIONS = {
+  "2MP (IP Camera)": ["640x360", "352x240"],
+  "4MP (IP Camera)": ["640x360"],
+  "5MP (IP Camera)": ["640x480"],
+  "6MP (IP Camera)": ["640x360"],
+  "8MP (IP Camera)": ["640x360"],
+  "5MP Fisheye_In (IP Camera)": ["640x512"],
+  "5MP Fisheye_Out (IP Camera)": ["640x512", "640x256"],
+  "12MP Fisheye (IP Camera)": ["768x768", "736x736", "768x384"],
+};
+
+const DUAL_ALLOWED_ANALOG_RESOLUTIONS = {
+  "D1 (Analog Camera)": ["Standard"],      // 360x240
+  "960H (Analog Camera)": ["Standard"],    // 480x240
+  "1MP (Analog Camera)": ["Standard"],     // 360x240
+  "2MP (Analog Camera)": ["Standard"],     // 640x360
+  "3MP (Analog Camera)": ["Standard"],     // 720x480
+  "4MP (Analog Camera)": ["Standard"],     // 640x360
+  "5MP (Analog Camera)": ["Standard"],     // 640x360
+};
+
+const isDualResolutionAllowed = (camType, resValue) => {
+  if (isAnalogType(camType)) {
+    const allowed = DUAL_ALLOWED_ANALOG_RESOLUTIONS[camType];
+    if (!allowed) return true;
+
+    return allowed.includes(resValue);
+  }
+
+  if (isIpType(camType)) {
+    const allowed = DUAL_ALLOWED_RESOLUTIONS[camType];
+    if (!allowed) return true;
+
+    return allowed.includes(resValue);
+  }
+
+  return true;
+};
+
+const isDualQualityAllowed = (camType, quality) => {
+  if (isAnalogType(camType)) {
+    return ["Standard", "Basic"].includes(quality);
+  }
+
+  return true;
+};
+
+const getDefaultDualResolution = (recorderType, camType) => {
+  const resList = CAMERA_TYPES[recorderType]?.[camType] || [];
+
+  if (isAnalogType(camType)) {
+    const allowed = DUAL_ALLOWED_ANALOG_RESOLUTIONS[camType] || [];
+    return resList.find(r => allowed.includes(r.value)) || resList[0] || null;
+  }
+
+  if (isIpType(camType)) {
+    const allowed = DUAL_ALLOWED_RESOLUTIONS[camType] || [];
+    return resList.find(r => allowed.includes(r.value)) || resList[0] || null;
+  }
+
+  return resList[0] || null;
+};
+
 const RAID_INFO = {
   "None": "Uses all disk capacity independently. No data redundancy or protection is provided.",
   "RAID1": "Mirrors data across disks to create an exact copy for redundancy. (50% usable capacity)",
@@ -449,17 +520,6 @@ const calcMbps = (cfg, ic) => {
   }, calcMode);
 };
 
-  useEffect(() => {
-  const options = getFpsOptions(recorderType, selectedRecorder);
-  const maxAllowed = Math.max(...options);
-
-  if (timeConfig.fps > maxAllowed) {
-    setTimeConfig(prev => ({ ...prev, fps: maxAllowed }));
-  }
-  if (eventConfig.fps > maxAllowed) {
-    setEventConfig(prev => ({ ...prev, fps: maxAllowed }));
-  }
-}, [recorderType, selectedRecorder]);
 
 const getResolutionText = (cfg) => {
   if (cfg.outResLabel) return cfg.outResLabel;
@@ -490,7 +550,7 @@ const exportToPDF = () => {
      NVR SUMMARY
   ====================== */
   doc.setFontSize(12);
-  doc.text("NVR Summary", 14, y);
+  doc.text("Recorder Summary", 14, y);
   y += 3;
 
   autoTable(doc,{
@@ -541,8 +601,10 @@ const exportToPDF = () => {
     
     const tMbps = calcMode? calcGroupMbps({ ...c.time, type: c.type, useIC: c.useIC }, calcMode) : 0;
     const eMbps = calcMode? calcGroupMbps({ ...c.event, type: c.type, useIC: c.useIC }, calcMode) : 0;
+    const dMbps =calcMode && c.useDualTrackRecording && c.dual? calcGroupMbps({ ...c.dual, type: c.type, useIC: c.useIC }, calcMode): 0;
     const tDaily = (tMbps * 3600 * c.time.hours * c.qty) / 8 / 1024;
     const eDaily = (eMbps * 3600 * c.event.hours * c.qty) / 8 / 1024;
+    const dDaily = (dMbps * 3600 * c.dual.hours * c.qty) / 8 / 1024;
 
     tableBody.push([
      getGroupLabel(c, idx),
@@ -574,9 +636,25 @@ const exportToPDF = () => {
       eDaily.toFixed(1),
     ]);
 
-    const groupHours = c.time.hours + c.event.hours;
-    const groupMbps = tMbps + eMbps;
-    const groupDaily = tDaily + eDaily;
+    if (c.useDualTrackRecording && c.dual) {
+  tableBody.push([
+    getGroupLabel(c, idx),
+    c.type,
+    c.qty,
+    c.sceneLabel,
+    "Dual",
+    c.dual.codec,
+    getResolutionText(c.dual),
+    c.dual.fps,
+    c.dual.qual,
+    c.dual.hours,
+    dMbps.toFixed(1),
+    dDaily.toFixed(1),
+  ]);
+}
+    const groupHours = c.time.hours + c.event.hours + (c.useDualTrackRecording && c.dual ? c.dual.hours : 0);
+    const groupMbps = tMbps + eMbps + dMbps;
+    const groupDaily = tDaily + eDaily + dDaily;
 
     tableBody.push([
     getGroupLabel(c, idx),
@@ -649,7 +727,7 @@ const exportToExcel = () => {
   /* =====================
      NVR SUMMARY
   ====================== */
-  rows.push(["NVR SUMMARY"]);
+  rows.push(["RECORDER SUMMARY"]);
   rows.push(["Item", "Value"]);
   rows.push(["NVR Model", selectedRecorder.name||"-"]);
   rows.push(["Channels Used", `${totals.totalCh} / ${selectedRecorder.ch}`]);
@@ -707,9 +785,11 @@ const eMbps = calcMode
     }, calcMode)
   : 0;
 
+  const dMbps =calcMode && c.useDualTrackRecording && c.dual? calcGroupMbps({ ...c.dual, type: c.type, useIC: c.useIC }, calcMode): 0;
 
     const tDaily = (tMbps * 3600 * c.time.hours * c.qty) / 8 / 1024;
     const eDaily = (eMbps * 3600 * c.event.hours * c.qty) / 8 / 1024;
+    const dDaily = (dMbps * 3600 * c.dual.hours * c.qty) / 8 / 1024;
 
     rows.push([
       getGroupLabel(c, idx),
@@ -741,10 +821,27 @@ const eMbps = calcMode
       eDaily.toFixed(1),
     ]);
 
+    if (c.useDualTrackRecording) {
+  rows.push([
+    getGroupLabel(c, idx),
+    c.type,
+    c.qty,
+    c.sceneLabel,
+    "Dual",
+    c.dual.codec,
+    getResolutionText(c.dual),
+    c.dual.fps,
+    c.dual.qual,
+    c.dual.hours,
+    dMbps.toFixed(1),
+    dDaily.toFixed(1),
+  ]);
+}
+
     // Group TOTAL
-    const groupHours = c.time.hours + c.event.hours;
-    const groupMbps = tMbps + eMbps;
-    const groupDaily = tDaily + eDaily;
+    const groupHours = c.time.hours + c.event.hours + (c.useDualTrackRecording && c.dual ? c.dual.hours : 0);
+    const groupMbps = tMbps + eMbps + dMbps;
+    const groupDaily = tDaily + eDaily + dDaily;
 
     rows.push([
    getGroupLabel(c, idx),
@@ -846,8 +943,25 @@ setEventConfig(prev => {
   }
   return { ...prev, res: resList.includes(prev.res) ? prev.res : resList[0] };
 });
-}, [recorderType, camType]);
 
+setDualConfig(prev => {
+  const found = resList.find(r => r.value === prev.res?.value);
+
+  if (
+    found &&
+    (!isIpType(camType) || isDualResolutionAllowed(camType, found.value))
+  ) {
+    return { ...prev, res: found };
+  }
+
+  return {
+    ...prev,
+    res: getDefaultDualResolution(recorderType, camType),
+    qual: !isDualQualityAllowed(camType, prev.qual)? "Standard": prev.qual
+  };
+});
+
+}, [recorderType, camType]);
 
 
   const [raidOption, setRaidOption] = useState("None");
@@ -891,10 +1005,32 @@ const [eventConfig, setEventConfig] = useState({
   hours: 2
 });
 
+const [dualConfig, setDualConfig] = useState({
+  res: getDefaultDualResolution(recorderType, camType),
+  fps: 15,
+  qual: "Standard",
+  codec: "H.265",
+  hours: timeConfig.hours + eventConfig.hours
+});
   const [activeSceneId, setActiveSceneId] = useState("");
   const [showRaidTooltip, setShowRaidTooltip] = useState(false);
   const [useIC, setUseIC] = useState(false); // ✅ Intelligent Codec (Group 단위)
+  const [useDualTrackRecording, setUseDualTrackRecording] = useState(false);
+  
+  useEffect(() => {
+  const options = getFpsOptions(recorderType, selectedRecorder);
+  const maxAllowed = Math.max(...options);
 
+  if (timeConfig.fps > maxAllowed) {
+    setTimeConfig(prev => ({ ...prev, fps: maxAllowed }));
+  }
+  if (eventConfig.fps > maxAllowed) {
+    setEventConfig(prev => ({ ...prev, fps: maxAllowed }));
+  }
+  if (dualConfig.fps > maxAllowed) {
+    setDualConfig(prev => ({ ...prev, fps: maxAllowed }));
+  }
+}, [recorderType, selectedRecorder, timeConfig.fps, eventConfig.fps, dualConfig.fps]);
   
   useEffect(() => {
   if (recorderType !== "NVR") return;
@@ -926,10 +1062,60 @@ const [eventConfig, setEventConfig] = useState({
 }, [recorderType, selectedRecorder, hddQty, raidOption]);
 
 useEffect(() => {
-  const types = Object.keys(CAMERA_TYPES[recorderType] || {});
-  setCamType(types[0] || "");
-}, [selectedRecorder]);
+  const types = Object.keys(CAMERA_TYPES[recorderType] || {}).filter(type => {
+    if (recorderType === "DVR" && !selectedRecorder?.isHybrid) {
+      return !type.includes("(IP Camera)");
+    }
+    return true;
+  });
 
+  const defaultCamType = types[0] || "";
+  const defaultRes = CAMERA_TYPES[recorderType]?.[defaultCamType]?.[0] || null;
+
+  setGroupTitle("Group 1");
+  setNextGroupNumber(2);
+
+  setActiveSceneId("");
+  setCamType(defaultCamType);
+  setCamQty(1);
+
+  setUseDualTrackRecording(false);
+  setUseIC(false);
+
+  setTimeConfig({
+    res: defaultRes,
+    fps: 15,
+    qual: "Standard",
+    codec: "H.265",
+    hours: 22
+  });
+
+  setEventConfig({
+    res: defaultRes,
+    fps: 30,
+    qual: "High",
+    codec: "H.265",
+    hours: 2
+  });
+
+  setDualConfig({
+    res: getDefaultDualResolution(recorderType, defaultCamType),
+    fps: 15,
+    qual: "Standard",
+    codec: "H.265",
+    hours: 24
+  });
+
+  setEditingId(null);
+  setFormBackup(null);
+}, [recorderType, selectedRecorder]);
+
+useEffect(() => {
+  setDualConfig(prev => ({
+    ...prev,
+    hours: timeConfig.hours + eventConfig.hours
+  }));
+}, [timeConfig.hours, eventConfig.hours]);
 
 
 const totals = useMemo(() => {
@@ -947,11 +1133,15 @@ const totals = useMemo(() => {
       (tMbps * 3600 * c.time.hours * c.qty) / 8 / 1024;
     const eventDaily =
       (eMbps * 3600 * c.event.hours * c.qty) / 8 / 1024;
+    
+    const dMbps = c.useDualTrackRecording
+      ? calcGroupMbps({ ...c.dual, type: c.type, useIC: c.useIC }, calcMode): 0;
 
-    totalDailyGB += timeDaily + eventDaily;
+    const dualDaily = c.useDualTrackRecording
+      ? (dMbps * 3600 * c.dual.hours * c.qty) / 8 / 1024 : 0;
 
-    // Peak throughput
-    maxThroughputMbps += Math.max(tMbps, eMbps) * c.qty;
+    totalDailyGB += timeDaily + eventDaily + dualDaily;
+    maxThroughputMbps += Math.max(tMbps, eMbps, dMbps) * c.qty;
   });
 
   const rawTotalTB = hddSize * hddQty;
@@ -1056,6 +1246,7 @@ const handleAddOrUpdateCamera = () => {
     qty: camQty,
     sceneId : activeSceneId,
     useIC,
+    useDualTrackRecording,
     sceneLabel: PRESET_SCENES.find(s => s.id === activeSceneId)?.name || "User",
     time: getCalcMode(camType) === "DVR"
   ? {
@@ -1089,6 +1280,23 @@ const handleAddOrUpdateCamera = () => {
       qual: eventConfig.qual,
       codec: eventConfig.codec,
       hours: eventConfig.hours
+    },
+    
+  dual: getCalcMode(camType) === "DVR"
+  ? {
+      outRes: dualConfig.res?.value ?? dualConfig.outRes,
+      outResLabel: dualConfig.res?.label ?? dualConfig.outRes,
+      fps: dualConfig.fps,
+      qual: dualConfig.qual,
+      codec: dualConfig.codec,
+      hours: dualConfig.hours
+    }
+  : {
+      res: dualConfig.res,
+      fps: dualConfig.fps,
+      qual: dualConfig.qual,
+      codec: dualConfig.codec,
+      hours: dualConfig.hours
     }
   };
 
@@ -1097,7 +1305,8 @@ const handleAddOrUpdateCamera = () => {
 
   const currentMbps = editingId
     ? totals.maxThroughputMbps - calcGroupPeakMbps(
-        cameras.find(c => c.id === editingId)
+        cameras.find(c => c.id === editingId),
+        recorderType
       )
     : totals.maxThroughputMbps;
 
@@ -1142,7 +1351,9 @@ const handleAddOrUpdateCamera = () => {
       camQty,
       timeConfig,
       eventConfig,
+      dualConfig,
       useIC,
+      useDualTrackRecording,
       activeSceneId,
     });
     setEditingId(camera.id);
@@ -1150,10 +1361,58 @@ const handleAddOrUpdateCamera = () => {
     setCamType(camera.type);
     setCamQty(camera.qty);
     setUseIC(camera.useIC ?? false); // ✅ 추가
+    setUseDualTrackRecording(camera.useDualTrackRecording ?? false);
+setDualConfig(camera.dual ?? {
+  res: getDefaultRes(),
+  fps: 15,
+  qual: "Standard",
+  codec: "H.265",
+  hours: 24
+});
     setTimeConfig({ ...camera.time });
     setEventConfig({ ...camera.event });
     setActiveSceneId(camera.sceneId||"");
   };
+
+  const getDefaultCameraType = () => {
+  const types = Object.keys(CAMERA_TYPES[recorderType] || {}).filter(type => {
+    if (recorderType === "DVR" && !selectedRecorder?.isHybrid) {
+      return !type.includes("(IP Camera)");
+    }
+    return true;
+  });
+
+  return types[0] || "";
+};
+
+const getDefaultConfigsByType = (type) => {
+  const defaultRes = CAMERA_TYPES[recorderType]?.[type]?.[0] || getDefaultRes();
+
+  return {
+    time: {
+      res: defaultRes,
+      fps: 15,
+      qual: "Standard",
+      codec: "H.265",
+      hours: 22
+    },
+    event: {
+      res: defaultRes,
+      fps: 30,
+      qual: "High",
+      codec: "H.265",
+      hours: 2
+    },
+    dual: {
+      res: defaultRes,
+      fps: 15,
+      qual: "Standard",
+      codec: "H.265",
+      hours: 24
+    }
+  };
+};
+
 
   const resetInputForm = () => {
     if (formBackup) {
@@ -1162,7 +1421,9 @@ const handleAddOrUpdateCamera = () => {
       setCamQty(formBackup.camQty);
       setTimeConfig(formBackup.timeConfig);
       setEventConfig(formBackup.eventConfig);
+      setDualConfig(formBackup.dualConfig);
       setUseIC(formBackup.useIC);
+      setUseDualTrackRecording(formBackup.useDualTrackRecording ?? false);
       setActiveSceneId(formBackup.activeSceneId);
     } else{
       setGroupTitle(`Group ${nextGroupNumber}`);
@@ -1497,7 +1758,20 @@ const handleAddOrUpdateCamera = () => {
               <div className="ml-4 flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-2 px-3 py-1.5">
                   <span className="text-[9px] font-black text-slate-400 uppercase">Camera</span>
-                  <select className="bg-transparent text-xs font-bold outline-none w-[100px] truncate" value={camType} onChange={e => { setCamType(e.target.value); setActiveSceneId(""); }}>
+                  <select className="bg-transparent text-xs font-bold outline-none w-[100px] truncate" value={camType} 
+                  onChange={e => {
+  const nextCamType = e.target.value;
+
+  setCamType(nextCamType);
+  setActiveSceneId("");
+
+  setDualConfig(prev => ({
+    ...prev,
+    res: getDefaultDualResolution(recorderType, nextCamType),
+    qual: isAnalogType(nextCamType) && !isDualQualityAllowed(nextCamType, prev.qual)? "Standard" : prev.qual
+  }));
+}}
+                  >
                     {Object.keys(CAMERA_TYPES[recorderType] || {}).filter(type => {
                       if (recorderType === "DVR" && !selectedRecorder?.isHybrid) {
                         return !type.includes("(IP Camera)");
@@ -1518,7 +1792,30 @@ const handleAddOrUpdateCamera = () => {
               </div>
             </div>
 {/* Intelligent Codec Option */}
-<div className="flex justify-end px-4 py+1 mb-1">
+<div className="flex justify-end gap-6 px-4 py-1 mb-1">
+  <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
+    <input
+      type="checkbox"
+      checked={useDualTrackRecording}
+      onChange={e => {
+  const checked = e.target.checked;
+  setUseDualTrackRecording(checked);
+
+  if (checked) {
+    setDualConfig(prev => ({
+      ...prev,
+      res: getDefaultDualResolution(recorderType, camType),
+      qual: isAnalogType(camType) && !isDualQualityAllowed(camType, prev.qual) ? "Standard" : prev.qual
+    }));
+  }
+}}
+      className="accent-purple-600"
+    />
+    <span className="text-[10px] font-black text-slate-600 uppercase">
+      Use Dual Track Recording
+    </span>
+  </label>
+
   <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
     <input
       type="checkbox"
@@ -1692,6 +1989,101 @@ const handleAddOrUpdateCamera = () => {
                   <span className="text-[10px] font-black text-slate-600">{calcMbps(eventConfig, useIC).toFixed(1)}</span>
                 </div>
               </div>
+              {useDualTrackRecording && (
+  <>
+    <div className="h-px bg-slate-200 mx-4"></div>
+
+    <div className="grid grid-cols-12 items-center py-3 px-4 bg-white/50">
+      <div className="col-span-2 flex items-center gap-2">
+        <Layers size={14} className="text-purple-500" />
+        <span className="text-xs font-black text-purple-600 uppercase">
+          Dual
+        </span>
+      </div>
+
+      <div className="col-span-2 px-2">
+        <select
+          className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center"
+          value={dualConfig.codec}
+          onChange={e => setDualConfig({ ...dualConfig, codec: e.target.value })}
+        >
+          <option>H.265</option>
+          <option>H.264</option>
+        </select>
+      </div>
+
+      <div className="col-span-3 px-2">
+        <select
+          className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center"
+          value={dualConfig.res?.value}
+          onChange={e => {
+            const selected = CAMERA_TYPES[recorderType][camType].find(r => r.value === e.target.value);
+            setDualConfig({ ...dualConfig, res: selected });
+          }}
+        >
+          {CAMERA_TYPES[recorderType]?.[camType]?.map(r => {
+            const disabled = !isDualResolutionAllowed(camType, r.value);
+
+  return (
+    <option
+      key={r.value}
+      value={r.value}
+      disabled={disabled}
+    >
+      {disabled ? `(Not Supported) ${r.label}` : r.label}
+    </option>
+  );
+})}
+        </select>
+      </div>
+
+      <div className="col-span-1 px-2">
+        <select
+          className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center"
+          value={dualConfig.fps}
+          onChange={e => setDualConfig({ ...dualConfig, fps: Number(e.target.value) })}
+        >
+          {getFpsOptions(recorderType, selectedRecorder).map(fps => (
+            <option key={fps} value={fps}>{fps}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="col-span-2 px-2">
+        <select
+          className="w-full bg-white border border-slate-200 rounded-md py-1 px-1.5 text-[11px] font-bold text-center"
+          value={dualConfig.qual}
+          onChange={e => setDualConfig({ ...dualConfig, qual: e.target.value })}
+        >
+          {Object.keys(QUALITY_MULTIPLIER).map(q => {
+  const disabled = !isDualQualityAllowed(camType, q);
+
+  return (
+    <option key={q} value={q} disabled={disabled}>
+      {disabled ? `(Not Supported) ${q}` : q}
+    </option>
+  );
+})}
+        </select>
+      </div>
+
+      <div className="col-span-1 px-2">
+        <input
+          type="number"
+          value={dualConfig.hours}
+          disabled
+          className="w-full bg-slate-100 border border-slate-200 rounded-md h-[28px] px-1.5 text-[11px] font-bold text-center"
+        />
+      </div>
+
+      <div className="col-span-1 text-right">
+        <span className="text-[10px] font-black text-slate-600">
+          {calcMbps(dualConfig, useIC).toFixed(1)}
+        </span>
+      </div>
+    </div>
+  </>
+)}
             </div>
 
             <div className="flex gap-3">
@@ -1756,8 +2148,9 @@ const handleAddOrUpdateCamera = () => {
                           useIC: c.useIC
                         }, calcMode)
                       : 0;
+                    const dMbps = calcMode && c.useDualTrackRecording && c.dual? calcGroupMbps({ ...c.dual, type: c.type, useIC: c.useIC }, calcMode): 0;
 
-const dailyGB = (((tMbps * 3600 * c.time.hours) + (eMbps * 3600 * c.event.hours)) * c.qty) / 8 / 1024;
+const dailyGB = (((tMbps * 3600 * c.time.hours) + (eMbps * 3600 * c.event.hours) + (dMbps * 3600 * (c.dual?.hours || 0))) * c.qty) / 8 / 1024;
                    const isEditing = editingId === c.id;
 
                    return (
@@ -1823,6 +2216,16 @@ const dailyGB = (((tMbps * 3600 * c.time.hours) + (eMbps * 3600 * c.event.hours)
     mbps={eMbps}
     recorderType={recorderType}
   />
+{c.useDualTrackRecording && (
+  <SummaryRow
+    label="DUAL"
+    icon={<Layers size={10} />}
+    color="text-purple-500"
+    cfg={c.dual}
+    mbps={dMbps}
+    recorderType={recorderType}
+  />
+)}
 </div>
                           </div>
                        </div>
