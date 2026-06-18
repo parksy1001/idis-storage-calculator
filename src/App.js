@@ -1014,6 +1014,7 @@ const [dualConfig, setDualConfig] = useState({
 });
   const [activeSceneId, setActiveSceneId] = useState("");
   const [showRaidTooltip, setShowRaidTooltip] = useState(false);
+  const [showStorageTooltip, setShowStorageTooltip] = useState(false);
   const [useIC, setUseIC] = useState(false); // ✅ Intelligent Codec (Group 단위)
   const [useDualTrackRecording, setUseDualTrackRecording] = useState(false);
   
@@ -1590,13 +1591,43 @@ const getDefaultConfigsByType = (type) => {
                     
                   
                 </div>
-                <div>
-                  <label className="text-[9px] font-black text-slate-400 uppercase mb-1 block">Size (TB)</label>
-                  <select
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={hddSize}
-                onChange={e => setHddSize(Number(e.target.value))}
-                  >
+<div className="relative">
+  <div className="flex items-center gap-1 mb-1">
+    <label className="text-[9px] font-black text-slate-400 uppercase">
+      Size (TB)
+    </label>
+
+    <button
+      type="button"
+      onMouseEnter={() => setShowStorageTooltip(true)}
+      onMouseLeave={() => setShowStorageTooltip(false)}
+      className="text-slate-300 hover:text-blue-500 transition-colors"
+    >
+      <Info size={10} />
+    </button>
+  </div>
+
+{showStorageTooltip && (
+  <div className="absolute bottom-full left-0 mb-2 w-72 z-50 bg-slate-800 text-white text-[10px] font-bold p-3 rounded-lg shadow-xl leading-relaxed">
+
+    <div className="text-blue-400 font-black text-[11px] mb-2">
+      Size Info
+    </div>
+
+    <div className="font-normal text-white text-[10px] leading-relaxed">
+      Supported storage drive sizes vary depending on the NVR model.
+      Please refer to the Product Compatibility section in the Partner Portal
+      to select a compatible drive size.
+    </div>
+
+  </div>
+)}
+
+  <select
+    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-500"
+    value={hddSize}
+    onChange={e => setHddSize(Number(e.target.value))}
+  >
                   {HDD_SIZE_OPTIONS.map(size => (
                     <option key={size} value={size}>
                     {size} TB
