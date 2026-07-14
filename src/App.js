@@ -1824,6 +1824,7 @@ const getDefaultConfigsByType = (type) => {
             </div>
 {/* Intelligent Codec Option */}
 <div className="flex justify-end gap-6 px-4 py-1 mb-1">
+  {selectedRecorder?.supportDualTrack === true && (
   <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
     <input
       type="checkbox"
@@ -1846,6 +1847,7 @@ const getDefaultConfigsByType = (type) => {
       Use Dual Track Recording
     </span>
   </label>
+  )}
 
   <label className="flex items-center gap-2 cursor-pointer whitespace-nowrap">
     <input
