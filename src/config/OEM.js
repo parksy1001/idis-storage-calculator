@@ -17,7 +17,7 @@ export const OEM_CONFIG = {
         { name: "DR-2504", supportDualTrack: true, recorderType :"NVR",  ch: 4, hdd: 2, evenHddOnly : false,  raids: ["None"], maxMbps: 70 },
         { name: "DR-1508", supportDualTrack: true, recorderType :"NVR",  ch: 8, hdd: 1, evenHddOnly : false,  raids: ["None"], maxMbps: 40 },
         { name: "DR-1504", supportDualTrack: true, recorderType :"NVR",  ch: 4, hdd: 1, evenHddOnly : false,  raids: ["None"], maxMbps: 20 },
-        { name: "IR-310D", supportDualTrack: true, recorderType :"NVR",  ch: 64, hdd: 8, evenHddOnly : false,  raids: ["None", "RAID1", "RAID5", "RAID10"], maxMbps: 400   },
+        { name: "IR-310D", supportDualTrack: false, recorderType :"NVR",  ch: 64, hdd: 8, evenHddOnly : false,  raids: ["None", "RAID1", "RAID5", "RAID10"], maxMbps: 400   },
 
     ],
     DVR_MODELS: [
