@@ -1,14 +1,14 @@
 {
   "files": {
     "main.css": "/idis-storage-calculator/static/css/main.2ca4df72.css",
-    "main.js": "/idis-storage-calculator/static/js/main.19a81924.js",
+    "main.js": "/idis-storage-calculator/static/js/main.6a328a12.js",
     "static/js/239.bf48dcfa.chunk.js": "/idis-storage-calculator/static/js/239.bf48dcfa.chunk.js",
     "static/js/213.2af809ae.chunk.js": "/idis-storage-calculator/static/js/213.2af809ae.chunk.js",
     "static/js/455.ae3a8ede.chunk.js": "/idis-storage-calculator/static/js/455.ae3a8ede.chunk.js",
     "static/js/453.9a667a85.chunk.js": "/idis-storage-calculator/static/js/453.9a667a85.chunk.js",
     "index.html": "/idis-storage-calculator/index.html",
     "main.2ca4df72.css.map": "/idis-storage-calculator/static/css/main.2ca4df72.css.map",
-    "main.19a81924.js.map": "/idis-storage-calculator/static/js/main.19a81924.js.map",
+    "main.6a328a12.js.map": "/idis-storage-calculator/static/js/main.6a328a12.js.map",
     "239.bf48dcfa.chunk.js.map": "/idis-storage-calculator/static/js/239.bf48dcfa.chunk.js.map",
     "213.2af809ae.chunk.js.map": "/idis-storage-calculator/static/js/213.2af809ae.chunk.js.map",
     "455.ae3a8ede.chunk.js.map": "/idis-storage-calculator/static/js/455.ae3a8ede.chunk.js.map",
@@ -16,6 +16,6 @@
   },
   "entrypoints": [
     "static/css/main.2ca4df72.css",
-    "static/js/main.19a81924.js"
+    "static/js/main.6a328a12.js"
   ]
 }
