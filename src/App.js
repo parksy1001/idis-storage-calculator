@@ -1601,7 +1601,7 @@ const getDefaultConfigsByType = (type) => {
       type="button"
       onMouseEnter={() => setShowStorageTooltip(true)}
       onMouseLeave={() => setShowStorageTooltip(false)}
-      className="text-slate-300 hover:text-blue-500 transition-colors"
+      className="text-red-600"
     >
       <Info size={10} />
     </button>
@@ -1644,7 +1644,7 @@ const getDefaultConfigsByType = (type) => {
                   <button 
                     onMouseEnter={() => setShowRaidTooltip(true)} 
                     onMouseLeave={() => setShowRaidTooltip(false)}
-                    className="text-slate-300 hover:text-blue-500 transition-colors"
+                    className="text-red-600"
                   >
                     <Info size={10} />
                   </button>
